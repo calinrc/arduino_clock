@@ -36,13 +36,16 @@
 #define SECD 22
 #define SECU 23
 
-static uint8_t POS[] =
-{ DAYOFWEEK, YEARM, YEARC, YEARD, YEARU, MONTHD, MONTHU, DAYD, DAYU, HOURD, HOURU, MIND, MINU, SECD, SECU };
-static uint8_t POSES_NO = 15;
+static uint8_t CLOCK_POS[] ={ DAYOFWEEK, YEARM, YEARC, YEARD, YEARU, MONTHD, MONTHU, DAYD, DAYU, HOURD, HOURU, MIND, MINU, SECD, SECU };
+static uint8_t ALARM_POS[] ={  HOURD, HOURU, MIND, MINU, SECD, SECU };
+static uint8_t CLOCK_POSES_NO = 15;
+static uint8_t ALARM_POSES_NO = 6;
 static uint8_t cursor = 0;
+static uint8_t alarmCursor = 0;
 static uint8_t x = 0;
 static uint8_t y = 0;
 static MD_DS3231 EDIT_RTC;
+static MD_DS3231 EDIT_ALARM_RTC;
 
 const byte ROWS = 4; //four rows
 const byte COLS = 4; //four columns
@@ -63,8 +66,18 @@ Keypad customKeypad = Keypad(makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS)
 
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
+enum CLOCK_STATE
+{
+	NORMAL,
+	EDIT_TIME,
+	ALARM,
+	EDIT_ALARM,
+	CLOCK_STATES_NO
+};
+
 volatile boolean bShowTime = false;
-volatile boolean bIsEditMode = false;
+volatile boolean bShowAlarm = false;
+volatile CLOCK_STATE eClockMode = NORMAL;
 
 void p2dig(uint8_t v)
 // print 2 digits with leading zero
@@ -110,11 +123,11 @@ void printTime(MD_DS3231 *CLOCK)
 	lcd.setCursor(x, y);
 }
 
-void displayUpdate(void)
+void displayUpdate(MD_DS3231 *CLOCK)
 // update the display
 {
-	RTC.readTime();
-	printTime(&RTC);
+	CLOCK->readTime();
+	printTime(CLOCK);
 }
 
 #if USE_POLLED_CB || USE_INTERRUPT
@@ -122,6 +135,11 @@ void alarmICB(void)
 // callback and interrupt function (same functionality)
 {
 	bShowTime = true;    // set the flag to update
+}
+
+void alarm2ICB(void)
+{
+	bShowAlarm = true;
 }
 #endif
 
@@ -141,6 +159,7 @@ void setup()
 #endif
 #if USE_POLLED_CB
 	RTC.setAlarm1Callback(alarmICB);
+	RTC.setAlarm2Callback(alarm2ICB);
 #endif
 #if USE_INTERRUPT
 	// set up hardware at Arduino end
@@ -156,159 +175,158 @@ void setup()
 
 	// now initialise the 1 second alarm for screen updates
 	RTC.setAlarm1Type(DS3231_ALM_SEC);
+	RTC.setAlarm2Type(DS3231_ALM_HM);
 }
 
-void changeItem(uint8_t pressedNumericKey, uint8_t pos)
+void changeItem(MD_DS3231 *EDITED, uint8_t pressedNumericKey, uint8_t *usedCursor)
 {
-
-	x = POS[cursor] % 16;
-	y = POS[cursor] / 16;
+	x = CLOCK_POS[*usedCursor] % 16;
+	y = CLOCK_POS[*usedCursor] / 16;
 	lcd.setCursor(x, y);
 
-	cursor = (cursor + 1) % POSES_NO;
-
-	switch (pos)
+	switch (CLOCK_POS[*usedCursor])
 	{
 	case DAYOFWEEK:
 		if (pressedNumericKey >= 1 && pressedNumericKey <= 7)
 		{
-			Serial.print("Change DayOfWeek");
+			Serial.print("Change DayOfWeek ");
 			Serial.println(pressedNumericKey);
-			EDIT_RTC.dow = pressedNumericKey;
-			lcd.print(dow2String(EDIT_RTC.dow));
+			EDITED->dow = pressedNumericKey;
+			lcd.print(dow2String(EDITED->dow));
 		}
 		break;
 	case YEARM:
 		if (pressedNumericKey == 1 || pressedNumericKey == 2)
 		{
-			Serial.print("Change YEARM");
-			Serial.println(pressedNumericKey * 1000 + EDIT_RTC.yyyy % 1000);
-			EDIT_RTC.yyyy = pressedNumericKey * 1000 + EDIT_RTC.yyyy % 1000;
+			Serial.print("Change YEARM ");
+			Serial.println(pressedNumericKey * 1000 + EDITED->yyyy % 1000);
+			EDITED->yyyy = pressedNumericKey * 1000 + EDITED->yyyy % 1000;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case YEARC:
-		Serial.print("Change YEARC");
-		Serial.println(pressedNumericKey * 100 + (EDIT_RTC.yyyy / 1000) * 1000);
-		EDIT_RTC.yyyy = pressedNumericKey * 100 + (EDIT_RTC.yyyy / 1000) * 1000 + EDIT_RTC.yyyy % 100;
+		Serial.print("Change YEARC ");
+		Serial.println(pressedNumericKey * 100 + (EDITED->yyyy / 1000) * 1000);
+		EDITED->yyyy = pressedNumericKey * 100 + (EDITED->yyyy / 1000) * 1000 + EDITED->yyyy % 100;
 		lcd.print(pressedNumericKey);
 		break;
 	case YEARD:
-		Serial.print("Change YEARD");
-		Serial.println(pressedNumericKey * 10 + (EDIT_RTC.yyyy / 100) * 100 + EDIT_RTC.yyyy % 10);
+		Serial.print("Change YEARD ");
+		Serial.println(pressedNumericKey * 10 + (EDITED->yyyy / 100) * 100 + EDITED->yyyy % 10);
 
-		EDIT_RTC.yyyy = pressedNumericKey * 10 + (EDIT_RTC.yyyy / 100) * 100 + EDIT_RTC.yyyy % 10;
+		EDITED->yyyy = pressedNumericKey * 10 + (EDITED->yyyy / 100) * 100 + EDITED->yyyy % 10;
 		lcd.print(pressedNumericKey);
 		break;
 	case YEARU:
-		Serial.print("Change YEARU");
-		Serial.println(pressedNumericKey + (EDIT_RTC.yyyy / 10) * 10);
-		EDIT_RTC.yyyy = pressedNumericKey + (EDIT_RTC.yyyy / 10) * 10;
+		Serial.print("Change YEARU ");
+		Serial.println(pressedNumericKey + (EDITED->yyyy / 10) * 10);
+		EDITED->yyyy = pressedNumericKey + (EDITED->yyyy / 10) * 10;
 		lcd.print(pressedNumericKey);
 		break;
 	case MONTHD:
 
 		if (pressedNumericKey == 0 || pressedNumericKey == 1)
 		{
-			Serial.print("Change MONTHD");
-			Serial.println(pressedNumericKey * 10 + EDIT_RTC.mm % 10);
-			EDIT_RTC.mm = pressedNumericKey * 10 + EDIT_RTC.mm % 10;
+			Serial.print("Change MONTHD ");
+			Serial.println(pressedNumericKey * 10 + EDITED->mm % 10);
+			EDITED->mm = pressedNumericKey * 10 + EDITED->mm % 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case MONTHU:
-		if (pressedNumericKey + (EDIT_RTC.mm / 10) * 10 <= 12)
+		if (pressedNumericKey + (EDITED->mm / 10) * 10 <= 12)
 		{
-			Serial.print("Change MONTHU");
-			Serial.println(pressedNumericKey + (EDIT_RTC.mm / 10) * 10);
+			Serial.print("Change MONTHU ");
+			Serial.println(pressedNumericKey + (EDITED->mm / 10) * 10);
 
-			EDIT_RTC.mm = pressedNumericKey + (EDIT_RTC.mm / 10) * 10;
+			EDITED->mm = pressedNumericKey + (EDITED->mm / 10) * 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case DAYD:
 		if (pressedNumericKey >= 0 && pressedNumericKey <= 3)
 		{
-			Serial.print("Change DAYD");
-			Serial.println(pressedNumericKey * 10 + EDIT_RTC.dd % 10);
+			Serial.print("Change DAYD ");
+			Serial.println(pressedNumericKey * 10 + EDITED->dd % 10);
 
-			EDIT_RTC.dd = pressedNumericKey * 10 + EDIT_RTC.dd % 10;
+			EDITED->dd = pressedNumericKey * 10 + EDITED->dd % 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case DAYU:
-		if (pressedNumericKey + (EDIT_RTC.dd / 10) * 10 <= 31)
+		if (pressedNumericKey + (EDITED->dd / 10) * 10 <= 31)
 		{
-			Serial.print("Change DAYU");
-			Serial.println(pressedNumericKey + (EDIT_RTC.dd / 10) * 10);
+			Serial.print("Change DAYU ");
+			Serial.println(pressedNumericKey + (EDITED->dd / 10) * 10);
 
-			EDIT_RTC.dd = pressedNumericKey + (EDIT_RTC.dd / 10) * 10;
+			EDITED->dd = pressedNumericKey + (EDITED->dd / 10) * 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case HOURD:
 		if (pressedNumericKey >= 0 && pressedNumericKey <= 2)
 		{
-			Serial.print("Change HOURD");
-			Serial.println(pressedNumericKey * 10 + EDIT_RTC.h % 10);
+			Serial.print("Change HOURD ");
+			Serial.println(pressedNumericKey * 10 + EDITED->h % 10);
 
-			EDIT_RTC.h = pressedNumericKey * 10 + EDIT_RTC.h % 10;
+			EDITED->h = pressedNumericKey * 10 + EDITED->h % 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case HOURU:
-		if (pressedNumericKey + (EDIT_RTC.h / 10) * 10 <= 23)
+		if (pressedNumericKey + (EDITED->h / 10) * 10 <= 23)
 		{
-			Serial.print("Change HOURU");
-			Serial.println(pressedNumericKey + (EDIT_RTC.h / 10) * 10);
+			Serial.print("Change HOURU ");
+			Serial.println(pressedNumericKey + (EDITED->h / 10) * 10);
 
-			EDIT_RTC.h = pressedNumericKey + (EDIT_RTC.h / 10) * 10;
+			EDITED->h = pressedNumericKey + (EDITED->h / 10) * 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case MIND:
 		if (pressedNumericKey >= 0 && pressedNumericKey <= 5)
 		{
-			Serial.print("Change MIND");
-			Serial.println(pressedNumericKey * 10 + EDIT_RTC.m % 10);
+			Serial.print("Change MIND ");
+			Serial.println(pressedNumericKey * 10 + EDITED->m % 10);
 
-			EDIT_RTC.m = pressedNumericKey * 10 + EDIT_RTC.m % 10;
+			EDITED->m = pressedNumericKey * 10 + EDITED->m % 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case MINU:
-		if (pressedNumericKey + (EDIT_RTC.m / 10) * 10 <= 59)
+		if (pressedNumericKey + (EDITED->m / 10) * 10 <= 59)
 		{
-			Serial.print("Change MINU");
-			Serial.println(pressedNumericKey + (EDIT_RTC.m / 10) * 10);
+			Serial.print("Change MINU ");
+			Serial.println(pressedNumericKey + (EDITED->m / 10) * 10);
 
-			EDIT_RTC.m = pressedNumericKey + (EDIT_RTC.m / 10) * 10;
+			EDITED->m = pressedNumericKey + (EDITED->m / 10) * 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case SECD:
 		if (pressedNumericKey >= 0 && pressedNumericKey <= 5)
 		{
-			Serial.print("Change SECD");
-			Serial.println(pressedNumericKey * 10 + EDIT_RTC.s % 10);
+			Serial.print("Change SECD ");
+			Serial.println(pressedNumericKey * 10 + EDITED->s % 10);
 
-			EDIT_RTC.s = pressedNumericKey * 10 + EDIT_RTC.s % 10;
+			EDITED->s = pressedNumericKey * 10 + EDITED->s % 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	case SECU:
-		if (pressedNumericKey + (EDIT_RTC.m / 10) * 10 <= 59)
+		if (pressedNumericKey + (EDITED->m / 10) * 10 <= 59)
 		{
-			Serial.print("Change SECU");
-			Serial.println(pressedNumericKey + (EDIT_RTC.s / 10) * 10);
+			Serial.print("Change SECU ");
+			Serial.println(pressedNumericKey + (EDITED->s / 10) * 10);
 
-			EDIT_RTC.s = pressedNumericKey + (EDIT_RTC.s / 10) * 10;
+			EDITED->s = pressedNumericKey + (EDITED->s / 10) * 10;
 			lcd.print(pressedNumericKey);
 		}
 		break;
 	}
-	x = POS[cursor] % 16;
-	y = POS[cursor] / 16;
+	*usedCursor = (*usedCursor + 1) % CLOCK_POSES_NO;
+	x = CLOCK_POS[*usedCursor] % 16;
+	y = CLOCK_POS[*usedCursor] / 16;
 	lcd.setCursor(x, y);
 
 }
@@ -331,32 +349,34 @@ void loop()
 		case '7':
 		case '8':
 		case '9':
-			if (bIsEditMode)
+			if (eClockMode == EDIT_TIME)
 			{
-				changeItem((customKey - '0'), cursor);
+				changeItem(&EDIT_RTC, (customKey - '0'), &cursor);
+			}
+			else if (eClockMode == EDIT_ALARM)
+			{
+				changeItem(&EDIT_ALARM_RTC, (customKey - '0'), &alarmCursor);
 			}
 			break;
 		case 'A':
-			bIsEditMode = !bIsEditMode;
+			//Stopped here. Use CLOCK_STATES_NO
+			eClockMode = (eClockMode == NORMAL) ? EDIT_TIME : NORMAL;
 			cursor = 0;
+			alarmCursor = 0;
 			lcd.setCursor(0, 0);
-			if (bIsEditMode)
+			if (eClockMode == EDIT_TIME)
 			{
 				EDIT_RTC = RTC;
 				lcd.blink();
 			}
 			else
 			{
-				//RTC = EDIT_RTC;
-//				EDIT_RTC.writeTime();
+				EDIT_RTC.writeTime();
 				lcd.noBlink();
 			}
 			break;
+
 		case 'B':
-			if (bIsEditMode)
-			{
-				printTime(&EDIT_RTC);
-			}
 			break;
 		case 'C':
 			break;
@@ -365,34 +385,62 @@ void loop()
 		case '*':
 			Serial.print("Move cursor down");
 
-			if (cursor > 1)
-				cursor = (cursor - 1) % POSES_NO;
-			else
-				cursor = 0;
-			x = POS[cursor] % 16;
-			y = POS[cursor] / 16;
+			if (eClockMode == EDIT_TIME)
+			{
+				if (cursor > 1)
+					cursor = (cursor - 1) % CLOCK_POSES_NO;
+				else
+					cursor = 0;
+				x = CLOCK_POS[cursor] % 16;
+				y = CLOCK_POS[cursor] / 16;
+
+			}
+			else if (eClockMode == EDIT_ALARM)
+			{
+				if (alarmCursor > 1)
+					alarmCursor = (alarmCursor - 1) % ALARM_POSES_NO;
+				else
+					alarmCursor = 0;
+				x = ALARM_POS[alarmCursor] % 16;
+				y = ALARM_POS[alarmCursor] / 16;
+
+			}
+
 			lcd.setCursor(x, y);
 
 			break;
 		case '#':
 			Serial.print("Move cursor up");
-			cursor = (cursor + 1) % POSES_NO;
-			x = POS[cursor] % 16;
-			y = POS[cursor] / 16;
+			if (eClockMode == EDIT_TIME)
+			{
+				cursor = (cursor + 1) % CLOCK_POSES_NO;
+				x = CLOCK_POS[cursor] % 16;
+				y = CLOCK_POS[cursor] / 16;
+
+			}
+			else if (eClockMode == EDIT_ALARM)
+			{
+				alarmCursor = (alarmCursor + 1) % ALARM_POSES_NO;
+				x = ALARM_POS[alarmCursor] % 16;
+				y = ALARM_POS[alarmCursor] / 16;
+
+			}
 			lcd.setCursor(x, y);
 
 			break;
 		}
 
 	}
-	if (!bIsEditMode)
+	if (eClockMode == NORMAL)
 	{
 
 #if USE_POLLED
 		bShowTime = RTC.checkAlarm1();
+		bShowAlarm = RTC.checkAlarm2();
 #endif
 #if USE_POLLED_CB
 		RTC.checkAlarm1();
+		RTC.checkAlarm2();
 #endif
 
 		// if the flag has been set, update the display then reset the show flag
@@ -401,7 +449,7 @@ void loop()
 #if USE_INTERRUPT
 			RTC.control(DS3231_A1_FLAG, DS3231_OFF);  // clear the alarm flag
 #endif
-			displayUpdate();
+			displayUpdate(&RTC);
 		}
 	}
 	bShowTime = false;
