@@ -36,8 +36,11 @@
 #define SECD 22
 #define SECU 23
 
-static uint8_t CLOCK_POS[] ={ DAYOFWEEK, YEARM, YEARC, YEARD, YEARU, MONTHD, MONTHU, DAYD, DAYU, HOURD, HOURU, MIND, MINU, SECD, SECU };
-static uint8_t ALARM_POS[] ={  HOURD, HOURU, MIND, MINU, SECD, SECU };
+static uint8_t CLOCK_POS[] =
+{ DAYOFWEEK, YEARM, YEARC, YEARD, YEARU, MONTHD, MONTHU, DAYD, DAYU, HOURD,
+HOURU, MIND, MINU, SECD, SECU };
+static uint8_t ALARM_POS[] =
+{ HOURD, HOURU, MIND, MINU, SECD, SECU };
 static uint8_t CLOCK_POSES_NO = 15;
 static uint8_t ALARM_POSES_NO = 6;
 static uint8_t cursor = 0;
@@ -62,17 +65,14 @@ byte colPins[COLS] =
 { A0, A1, A2, A3 }; //connect to the column pinouts of the keypad
 
 //initialize an instance of class NewKeypad
-Keypad customKeypad = Keypad(makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS);
+Keypad customKeypad = Keypad(makeKeymap(hexaKeys), rowPins, colPins, ROWS,
+		COLS);
 
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
 enum CLOCK_STATE
 {
-	NORMAL,
-	EDIT_TIME,
-	ALARM,
-	EDIT_ALARM,
-	CLOCK_STATES_NO
+	NORMAL, EDIT_TIME, ALARM, EDIT_ALARM, CLOCK_STATES_NO
 };
 
 volatile boolean bShowTime = false;
@@ -87,7 +87,8 @@ void p2dig(uint8_t v)
 	lcd.print(v);
 }
 
-const char* dow2String(uint8_t code)
+const char*
+dow2String(uint8_t code)
 // Day of week to string. DAYOFWEEK 1=Sunday, 0 is undefined
 {
 	static const char *str[] =
@@ -123,11 +124,37 @@ void printTime(MD_DS3231 *CLOCK)
 	lcd.setCursor(x, y);
 }
 
+void printAlarm(MD_DS3231 *CLOCK)
+{
+// Print the current time and date to the LCD display
+
+	lcd.setCursor(0, 0);
+	lcd.print("Alarm!!!");
+
+	lcd.setCursor(0, 1);
+	p2dig(CLOCK->h);
+	lcd.print(":");
+	p2dig(CLOCK->m);
+	lcd.print(":");
+	p2dig(CLOCK->s);
+	if (CLOCK->status(DS3231_12H) == DS3231_ON)
+		lcd.print(CLOCK->pm ? " pm" : " am");
+
+	lcd.setCursor(x, y);
+}
+
 void displayUpdate(MD_DS3231 *CLOCK)
 // update the display
 {
 	CLOCK->readTime();
 	printTime(CLOCK);
+}
+
+void displayAlarmUpdate(MD_DS3231 *CLOCK)
+// update the display
+{
+	CLOCK->readTime();
+	printAlarm(CLOCK);
 }
 
 #if USE_POLLED_CB || USE_INTERRUPT
@@ -178,13 +205,14 @@ void setup()
 	RTC.setAlarm2Type(DS3231_ALM_HM);
 }
 
-void changeItem(MD_DS3231 *EDITED, uint8_t pressedNumericKey, uint8_t *usedCursor)
+void changeItem(MD_DS3231 *EDITED, uint8_t pressedNumericKey,
+		uint8_t *usedCursor, uint8_t *posArray, uint8_t posArraySize)
 {
-	x = CLOCK_POS[*usedCursor] % 16;
-	y = CLOCK_POS[*usedCursor] / 16;
+	x = posArray[*usedCursor] % 16;
+	y = posArray[*usedCursor] / 16;
 	lcd.setCursor(x, y);
 
-	switch (CLOCK_POS[*usedCursor])
+	switch (posArray[*usedCursor])
 	{
 	case DAYOFWEEK:
 		if (pressedNumericKey >= 1 && pressedNumericKey <= 7)
@@ -207,14 +235,18 @@ void changeItem(MD_DS3231 *EDITED, uint8_t pressedNumericKey, uint8_t *usedCurso
 	case YEARC:
 		Serial.print("Change YEARC ");
 		Serial.println(pressedNumericKey * 100 + (EDITED->yyyy / 1000) * 1000);
-		EDITED->yyyy = pressedNumericKey * 100 + (EDITED->yyyy / 1000) * 1000 + EDITED->yyyy % 100;
+		EDITED->yyyy = pressedNumericKey * 100 + (EDITED->yyyy / 1000) * 1000
+				+ EDITED->yyyy % 100;
 		lcd.print(pressedNumericKey);
 		break;
 	case YEARD:
 		Serial.print("Change YEARD ");
-		Serial.println(pressedNumericKey * 10 + (EDITED->yyyy / 100) * 100 + EDITED->yyyy % 10);
+		Serial.println(
+				pressedNumericKey * 10 + (EDITED->yyyy / 100) * 100
+						+ EDITED->yyyy % 10);
 
-		EDITED->yyyy = pressedNumericKey * 10 + (EDITED->yyyy / 100) * 100 + EDITED->yyyy % 10;
+		EDITED->yyyy = pressedNumericKey * 10 + (EDITED->yyyy / 100) * 100
+				+ EDITED->yyyy % 10;
 		lcd.print(pressedNumericKey);
 		break;
 	case YEARU:
@@ -325,8 +357,8 @@ void changeItem(MD_DS3231 *EDITED, uint8_t pressedNumericKey, uint8_t *usedCurso
 		break;
 	}
 	*usedCursor = (*usedCursor + 1) % CLOCK_POSES_NO;
-	x = CLOCK_POS[*usedCursor] % 16;
-	y = CLOCK_POS[*usedCursor] / 16;
+	x = posArray[*usedCursor] % 16;
+	y = posArray[*usedCursor] / 16;
 	lcd.setCursor(x, y);
 
 }
@@ -351,15 +383,16 @@ void loop()
 		case '9':
 			if (eClockMode == EDIT_TIME)
 			{
-				changeItem(&EDIT_RTC, (customKey - '0'), &cursor);
+				changeItem(&EDIT_RTC, (customKey - '0'), &cursor, CLOCK_POS,
+						CLOCK_POSES_NO);
 			}
 			else if (eClockMode == EDIT_ALARM)
 			{
-				changeItem(&EDIT_ALARM_RTC, (customKey - '0'), &alarmCursor);
+				changeItem(&EDIT_ALARM_RTC, (customKey - '0'), &alarmCursor,
+						ALARM_POS, ALARM_POSES_NO);
 			}
 			break;
 		case 'A':
-			//Stopped here. Use CLOCK_STATES_NO
 			eClockMode = (eClockMode == NORMAL) ? EDIT_TIME : NORMAL;
 			cursor = 0;
 			alarmCursor = 0;
@@ -377,6 +410,20 @@ void loop()
 			break;
 
 		case 'B':
+			eClockMode = (eClockMode == ALARM) ? EDIT_ALARM : ALARM;
+			cursor = 0;
+			alarmCursor = 0;
+			lcd.setCursor(0, 0);
+			if (eClockMode == EDIT_ALARM)
+			{
+				EDIT_ALARM_RTC = RTC;
+				lcd.blink();
+			}
+			else
+			{
+				EDIT_ALARM_RTC.writeTime();
+				lcd.noBlink();
+			}
 			break;
 		case 'C':
 			break;
@@ -444,7 +491,14 @@ void loop()
 #endif
 
 		// if the flag has been set, update the display then reset the show flag
-		if (bShowTime)
+		if (bShowAlarm)
+		{
+#if USE_INTERRUPT
+			EDIT_ALARM_RTC.control(DS3231_A1_FLAG, DS3231_OFF);  // clear the alarm flag
+#endif
+			displayAlarmUpdate(&EDIT_ALARM_RTC);
+		}
+		else if (bShowTime)
 		{
 #if USE_INTERRUPT
 			RTC.control(DS3231_A1_FLAG, DS3231_OFF);  // clear the alarm flag
