@@ -36,7 +36,7 @@ Arduino clock build from Arduino Pro Mini, LCD, RT DS3231 and Matrix Keyboard
 
 ### RT DS3231 (RTC)
 
-- GND - GND 
+- GND - GND
 - VCC - VCC
 - SDA - A4
 - SCL - A5
@@ -48,16 +48,16 @@ Arduino clock build from Arduino Pro Mini, LCD, RT DS3231 and Matrix Keyboard
  - Pin 1 - VCC
  - Pin 2 - LCD V0 PIN 3
  - Pin 3 - GND
- 
+
 ### Buzzer
  - Pin 1 - GND
  - Pin 2 - D3
- 
- 
-## Behavior 
 
-Press A to chnage between Edit mode and Normal (display) mode
-Press B to chnage between alarm and Edit Alarm mode
-Press * to move cursor in edit mode to left
-Press # to move cursor in edit mode to right
-Use numeric pad in edit mode to chnage current cursor value
+
+## Behavior
+
+- Press A to chnage between Edit mode and Normal (display) mode
+- Press B to chnage between alarm and Edit Alarm mode
+- Press * to move cursor in edit mode to left
+- Press # to move cursor in edit mode to right
+- Use numeric pad in edit mode to chnage current cursor value

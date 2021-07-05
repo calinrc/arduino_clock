@@ -1,2 +1,0 @@
-eclipse.preferences.version=1
-libraries=["Keypad", "MD_DS3231", "LiquidCrystal", {"package"\:"arduino","platform"\:"avr","library"\:"Wire"}]
